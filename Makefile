@@ -4,7 +4,7 @@ SOURCES := $(wildcard Awake/*.swift)
 APP_BUNDLE := $(BUILD_DIR)/$(APP_NAME).app
 ARCH := $(shell uname -m)
 
-.PHONY: all clean run
+.PHONY: all clean run setup
 
 all: $(APP_BUNDLE)
 
@@ -26,6 +26,13 @@ $(APP_BUNDLE): $(BUILD_DIR)/$(APP_NAME) Awake/Info.plist
 
 run: $(APP_BUNDLE)
 	@open $(APP_BUNDLE)
+
+setup:
+	@echo "Setting up passwordless pmset for $(USER)..."
+	@echo '$(USER) ALL=(ALL) NOPASSWD: /usr/bin/pmset disablesleep 0, /usr/bin/pmset disablesleep 1' | sudo tee /etc/sudoers.d/zzz-awake > /dev/null
+	@sudo chmod 0440 /etc/sudoers.d/zzz-awake
+	@sudo visudo -cf /etc/sudoers.d/zzz-awake
+	@echo "Done. Awake can now toggle sleep without password prompts."
 
 clean:
 	rm -rf $(BUILD_DIR)
