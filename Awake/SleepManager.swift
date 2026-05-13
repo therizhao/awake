@@ -4,13 +4,19 @@ import IOKit.pwr_mgt
 final class SleepManager {
     private(set) var isActive = false
     private var assertionID: IOPMAssertionID = 0
+    private var timer: Timer?
+    private(set) var endDate: Date?
+    private(set) var activeDuration: TimeInterval?
 
-    func toggle() {
-        if isActive { disable() } else { enable() }
+    var onStateChange: (() -> Void)?
+
+    var remainingTime: TimeInterval? {
+        guard let endDate else { return nil }
+        return max(0, endDate.timeIntervalSinceNow)
     }
 
-    func enable() {
-        guard !isActive else { return }
+    func enable(for duration: TimeInterval? = nil) {
+        if isActive { disable() }
         guard setPmset(disableSleep: true) else { return }
         let reason = "Awake: User requested sleep prevention" as CFString
         IOPMAssertionCreateWithName(
@@ -20,16 +26,33 @@ final class SleepManager {
             &assertionID
         )
         isActive = true
+        activeDuration = duration
+
+        if let duration {
+            endDate = Date().addingTimeInterval(duration)
+            timer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
+                self?.disable()
+            }
+        } else {
+            endDate = nil
+        }
+
+        onStateChange?()
     }
 
     func disable() {
         guard isActive else { return }
+        timer?.invalidate()
+        timer = nil
+        endDate = nil
+        activeDuration = nil
         setPmset(disableSleep: false)
         if assertionID != 0 {
             IOPMAssertionRelease(assertionID)
             assertionID = 0
         }
         isActive = false
+        onStateChange?()
     }
 
     @discardableResult
@@ -49,6 +72,13 @@ final class SleepManager {
     }
 
     deinit {
-        disable()
+        if isActive {
+            timer?.invalidate()
+            timer = nil
+            setPmset(disableSleep: false)
+            if assertionID != 0 {
+                IOPMAssertionRelease(assertionID)
+            }
+        }
     }
 }
